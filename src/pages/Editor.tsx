@@ -1,132 +1,165 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { db } from '../lib/firebase';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { db, auth } from '../lib/firebase';
+import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import CodeMirror from '@uiw/react-codemirror';
 import { html } from '@codemirror/lang-html';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Trash2 } from 'lucide-react';
 
 export default function Editor() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [code, setCode] = useState('');
   const [title, setTitle] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saveStatus, setSaveStatus] = useState('已儲存');
 
   useEffect(() => {
-    const loadNote = async () => {
-      if (!id) return;
+    loadNote();
+  }, [id]);
 
-      const noteRef = doc(db, 'notes', id);
+  const handleDelete = async () => {
+    try {
+      if (!id || !auth.currentUser) return;
+
+      // 顯示確認對話框
+      const isConfirmed = window.confirm('確定要刪除這個筆記嗎？此操作無法復原。');
+
+      if (!isConfirmed) return;
+
+      const noteRef = doc(db, 'users', auth.currentUser.uid, 'notes', id);
+      await deleteDoc(noteRef);
+      navigate('/');
+    } catch (error) {
+      console.error('Error deleting note:', error);
+      alert('刪除失敗，請稍後再試');
+    }
+  };
+
+  const loadNote = async () => {
+    try {
+      if (!id || !auth.currentUser?.email) return;
+
+      const noteRef = doc(db, 'users', auth.currentUser.email, 'notes', id);
       const noteSnap = await getDoc(noteRef);
 
       if (noteSnap.exists()) {
         setCode(noteSnap.data().content);
         setTitle(noteSnap.data().title);
       }
-    };
+    } catch (error) {
+      console.error('Error loading note:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    loadNote();
-  }, [id]);
+  // 使用防抖來延遲儲存
+  useEffect(() => {
+    if (!code || !id) return;
 
-  const handleCodeChange = async (value: string) => {
-    setCode(value);
-    if (!id) return;
+    setSaveStatus('儲存中...');
+    const timer = setTimeout(() => {
+      handleSave();
+    }, 1000);
 
-    const noteRef = doc(db, 'notes', id);
-    await updateDoc(noteRef, {
-      content: value,
-      updatedAt: new Date(),
-    });
+    return () => clearTimeout(timer);
+  }, [code]);
+
+  const handleSave = async () => {
+    try {
+      if (!id || !auth.currentUser?.email) return;
+
+      const noteRef = doc(db, 'users', auth.currentUser.email, 'notes', id);
+      await updateDoc(noteRef, {
+        content: code,
+        updatedAt: new Date(),
+      });
+      setSaveStatus('已儲存');
+    } catch (error) {
+      console.error('Error saving note:', error);
+      setSaveStatus('儲存失敗');
+    }
   };
 
   const handleTitleChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const newTitle = e.target.value;
     setTitle(newTitle);
-    if (!id) return;
 
-    const noteRef = doc(db, 'notes', id);
-    await updateDoc(noteRef, {
-      title: newTitle,
-      updatedAt: new Date(),
-    });
+    try {
+      if (!id || !auth.currentUser?.email) return;
+
+      const noteRef = doc(db, 'users', auth.currentUser.email, 'notes', id);
+      await updateDoc(noteRef, {
+        title: newTitle,
+        updatedAt: new Date(),
+      });
+    } catch (error) {
+      console.error('Error updating title:', error);
+    }
   };
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center space-x-4">
-        <button
-          onClick={() => navigate('/')}
-          className="flex items-center space-x-2 px-4 py-2 rounded-lg text-gray-600 hover:bg-white hover:shadow-md transition duration-200"
-        >
-          <ArrowLeft className="h-5 w-5" />
-          <span>Back to Dashboard</span>
-        </button>
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
+      </div>
+    );
+  }
 
-        <input
-          type="text"
-          value={title}
-          onChange={handleTitleChange}
-          className="flex-1 px-4 py-2 text-xl font-semibold bg-transparent border-b-2 border-gray-200 focus:border-indigo-500 outline-none"
-          placeholder="Note Title"
-        />
+  return (
+    <div className="h-screen flex flex-col">
+      {/* 頂部工具列 */}
+      <div className="bg-white border-b px-4 py-2 flex items-center justify-between">
+        <div className="flex items-center space-x-4">
+          <button
+            onClick={() => navigate('/')}
+            className="text-gray-600 hover:text-gray-900"
+          >
+            <ArrowLeft className="h-6 w-6" />
+          </button>
+          <input
+            type="text"
+            value={title}
+            onChange={handleTitleChange}
+            className="text-xl font-semibold focus:outline-none border-b border-transparent focus:border-indigo-500"
+            placeholder="輸入標題..."
+          />
+        </div>
+        <div className="flex items-center space-x-4">
+          <span className="text-sm text-gray-500">{saveStatus}</span>
+          <button
+            onClick={handleDelete}
+            className="flex items-center space-x-2 px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            title="刪除筆記"
+          >
+            <Trash2 className="h-5 w-5" />
+          </button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 h-[calc(100vh-200px)]">
-        <div className="bg-white rounded-lg shadow-md overflow-hidden">
-          <div className="h-full overflow-auto" style={{ maxHeight: 'calc(100vh - 200px)' }}>
-            <CodeMirror
-              value={code}
-              height="100%"
-              extensions={[html()]}
-              onChange={handleCodeChange}
-              theme="light"
-              basicSetup={{
-                lineNumbers: true,
-                highlightActiveLineGutter: true,
-                highlightSpecialChars: true,
-                history: true,
-                foldGutter: true,
-                drawSelection: true,
-                dropCursor: true,
-                allowMultipleSelections: true,
-                indentOnInput: true,
-                syntaxHighlighting: true,
-                bracketMatching: true,
-                closeBrackets: true,
-                autocompletion: true,
-                rectangularSelection: true,
-                crosshairCursor: true,
-                highlightActiveLine: true,
-                highlightSelectionMatches: true,
-                closeBracketsKeymap: true,
-                defaultKeymap: true,
-                searchKeymap: true,
-                historyKeymap: true,
-                foldKeymap: true,
-                completionKeymap: true,
-                lintKeymap: true,
-              }}
-            />
-          </div>
+      {/* 分屏編輯區域 */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* 左側編輯器 */}
+        <div className="w-1/2 border-r overflow-hidden">
+          <CodeMirror
+            value={code}
+            height="100%"
+            extensions={[html()]}
+            onChange={(value) => {
+              setCode(value);
+              setSaveStatus('未儲存');
+            }}
+            theme="light"
+            className="h-full overflow-auto"
+          />
         </div>
 
-        <div className="bg-white rounded-lg shadow-md p-4 overflow-auto">
+        {/* 右側預覽 */}
+        <div className="w-1/2 overflow-auto">
           <div
+            className="prose max-w-none p-8"
             dangerouslySetInnerHTML={{ __html: code }}
-            className="prose prose-sm sm:prose lg:prose-lg xl:prose-xl 
-              prose-headings:font-bold prose-headings:text-gray-800
-              prose-h1:text-4xl prose-h1:mb-4
-              prose-h2:text-3xl prose-h2:mb-3
-              prose-h3:text-2xl prose-h3:mb-3
-              prose-h4:text-xl prose-h4:mb-2
-              prose-h5:text-lg prose-h5:mb-2
-              prose-h6:text-base prose-h6:mb-2
-              prose-p:text-gray-600 prose-p:mb-4
-              prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline
-              prose-strong:font-bold prose-strong:text-gray-800
-              prose-ul:list-disc prose-ul:ml-4
-              prose-ol:list-decimal prose-ol:ml-4
-              max-w-none"
           />
         </div>
       </div>

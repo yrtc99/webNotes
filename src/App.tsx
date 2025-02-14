@@ -6,6 +6,8 @@ import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Editor from './pages/Editor';
+import Resources from './pages/Resources';
+import Tutorial from './pages/Tutorial';
 
 function App() {
   const [user, setUser] = React.useState<any>(null);
@@ -36,6 +38,8 @@ function App() {
         <Route element={user ? <Layout /> : <Navigate to="/login" />}>
           <Route path="/" element={<Dashboard />} />
           <Route path="/edit/:id" element={<Editor />} />
+          <Route path="/tutorial" element={<Tutorial />} />
+          <Route path="/resources" element={<Resources />} />
         </Route>
       </Routes>
     </BrowserRouter>

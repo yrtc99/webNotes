@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+*.bot
+.bot
+dataconnect
+dataconnect-generated
+functions
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
